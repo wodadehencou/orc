@@ -210,9 +210,7 @@ func (w *Writer) WriteColumns(ColumnIterators []ColumnIterator) error {
 		w.stripeRows += uint64(until-from)
 
 		if w.totalRows%uint64(w.footer.GetRowIndexStride()) == 0 {
-			if err := w.flushWriters(); err != nil {
-				return err
-			}
+			w.recordPositions()
 
 			if w.treeWriters.size() >= w.stripeTargetSize {
 				if err := w.writeStripe(); err != nil {
