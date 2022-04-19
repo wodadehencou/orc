@@ -72,9 +72,9 @@ func SetCompression(codec CompressionCodec) WriterConfigFunc {
 		switch codec.(type) {
 		case nil:
 		case CompressionNone:
-		case CompressionSnappy:
 			return fmt.Errorf("Unknown compression codec type %T", codec)
-			// w.postScript.Compression = proto.CompressionKind_SNAPPY.Enum()
+		case CompressionSnappy:
+			w.postScript.Compression = proto.CompressionKind_SNAPPY.Enum()
 		case CompressionZlib:
 			w.postScript.Compression = proto.CompressionKind_ZLIB.Enum()
 		default:
@@ -170,6 +170,72 @@ func (w *Writer) Write(values ...interface{}) error {
 			return w.writeStripe()
 		}
 	}
+
+	return nil
+}
+
+// ColumnIterator ...
+type ColumnIterator interface {
+	// Range iterates [from,until)
+	Range(from int, until int, f func(int, interface{}) error) error
+	// Count returns the total length of the column
+	Count() int
+}
+
+// WriteColumns writes stripes by columns
+// Allows only non nested struct
+func (w *Writer) WriteColumns(ColumnIterators []ColumnIterator) error {
+	colLength := ColumnIterators[0].Count()
+	delta := int(uint64(w.footer.GetRowIndexStride()) - w.totalRows%uint64(w.footer.GetRowIndexStride()))
+	from := 0
+	until := minInt(
+		delta,
+		int(w.footer.GetRowIndexStride()),
+		colLength,
+	)
+
+	for from < colLength {
+		// Writes empty top level struct as we can assume it is non nil
+		for i := from; i < until; i++ {
+			if err := w.treeWriter.(*StructTreeWriter).BaseTreeWriter.Write(struct{}{}); err != nil {
+				return err
+			}
+		}
+
+		for i, col := range ColumnIterators {
+			colWriter := w.treeWriter.(*StructTreeWriter).children[i]
+			err := col.Range(from, until, func(_ int, v interface{}) error {
+				return colWriter.Write(v)
+			})
+
+			if err != nil {
+				return err
+			}
+		}
+
+		w.totalRows += uint64(until - from)
+		w.stripeRows += uint64(until - from)
+
+		if w.totalRows%uint64(w.footer.GetRowIndexStride()) == 0 {
+			w.recordPositions()
+
+			if w.treeWriters.size() >= w.stripeTargetSize {
+				if err := w.writeStripe(); err != nil {
+					return err
+				}
+			}
+			if int64(w.stripeRows) >= w.stripeTargetRowCount {
+				if err := w.writeStripe(); err != nil {
+					return err
+				}
+			}
+		}
+
+		from = until
+		remainder := colLength - until
+		until += minInt(remainder, int(w.footer.GetRowIndexStride()))
+	}
+
 	return nil
 }
 
