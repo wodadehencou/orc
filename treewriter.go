@@ -31,6 +31,8 @@ type TreeWriter interface {
 	RecordPositions()
 	// Statistics
 	Statistics() ColumnStatistics
+	// BufferedSize returns current write buffer size of writer
+	BufferedSize() int64
 }
 
 // BaseTreeWriter is a TreeWriter implementation that writes to the present stream. It
@@ -184,6 +186,14 @@ func (b *BaseTreeWriter) RowIndex() *proto.RowIndex {
 
 func (b *BaseTreeWriter) Statistics() ColumnStatistics {
 	return b.statistics
+}
+
+func (b *BaseTreeWriter) BufferedSize() int64 {
+	var size int
+	for _, stream := range b.Streams() {
+		size += stream.buffer.Len()
+	}
+	return int64(size)
 }
 
 // IntegerWriter is an interface implemented by all integer type writers.
@@ -553,6 +563,7 @@ type StringTreeWriter struct {
 	modeSelected          bool
 	isDictionaryEncoded   bool
 	dictionarySize        uint32
+	bufferedSize          int64
 }
 
 // NewStringTreeWriter returns a new StringTreeWriter or an error if one occurs.
@@ -577,6 +588,7 @@ func (s *StringTreeWriter) WriteString(value string) error {
 	s.numValues++
 	s.bufferedValues = append(s.bufferedValues, value)
 	s.dictionary.add(value)
+	s.bufferedSize += int64(len(value))
 	return nil
 }
 
@@ -717,6 +729,14 @@ func (s *StringTreeWriter) Encoding() *proto.ColumnEncoding {
 	return &proto.ColumnEncoding{
 		Kind: proto.ColumnEncoding_DIRECT_V2.Enum(),
 	}
+}
+
+// BufferedSize returns the stripe size of writer
+// column encoding is either DICTIONARY_V2 or DIRECT_V2 which is determined when close the writer,
+// we use DIRECT_V2 encoding mode to get the bufferedsize.
+// If DICTIONARY_V2 is finally selected, real stripe size will be smaller
+func (s *StringTreeWriter) BufferedSize() int64 {
+	return s.bufferedSize + s.BaseTreeWriter.BufferedSize()
 }
 
 type ListTreeWriter struct {
