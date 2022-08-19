@@ -587,7 +587,7 @@ func NewStringTreeWriter(category Category, codec CompressionCodec) (*StringTree
 func (s *StringTreeWriter) WriteString(value string) error {
 	s.numValues++
 	s.bufferedValues = append(s.bufferedValues, value)
-	s.dictionary.add(value)
+	// s.dictionary.add(value)
 	s.bufferedSize += int64(len(value))
 	return nil
 }
@@ -714,6 +714,11 @@ func (s *StringTreeWriter) useDictionaryEncoding() bool {
 	// TODO: find better way to determine whether dictionary encoding should be
 	// used. Currently this method is creating a new dictionary and using
 	// it to check the cardinality against the threshold value.
+
+	for _, v := range s.bufferedValues {
+		s.dictionary.add(v)
+	}
+
 	s.isDictionaryEncoded = float64(s.dictionary.size())/float64(s.numValues) <= DictionaryEncodingThreshold
 	return s.isDictionaryEncoded
 }
@@ -736,7 +741,8 @@ func (s *StringTreeWriter) Encoding() *proto.ColumnEncoding {
 // we use DIRECT_V2 encoding mode to get the bufferedsize.
 // If DICTIONARY_V2 is finally selected, real stripe size will be smaller
 func (s *StringTreeWriter) BufferedSize() int64 {
-	return s.bufferedSize + s.BaseTreeWriter.BufferedSize()
+	// 8 is column length size will be written in base tree writer
+	return s.bufferedSize + 8
 }
 
 type ListTreeWriter struct {
