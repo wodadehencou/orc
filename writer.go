@@ -100,6 +100,16 @@ func SetStripeTargetRowCount(stripeTargetRowCount int64) WriterConfigFunc {
 	}
 }
 
+func SetRowIndexStride(rowIndexStride uint32) WriterConfigFunc {
+	return func(w *Writer) error {
+		if rowIndexStride < 1000 {
+			return fmt.Errorf("RowIndexStride (%d) should be more than 1000", rowIndexStride)
+		}
+		w.footer.RowIndexStride = ptrUint32(rowIndexStride)
+		return nil
+	}
+}
+
 func AddUserMetadata(name string, value []byte) WriterConfigFunc {
 	return func(w *Writer) error {
 		w.footer.Metadata = append(w.footer.Metadata, &proto.UserMetadataItem{
